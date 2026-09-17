@@ -1,0 +1,21 @@
+{
+  "scope": "synthetic local SQLite projections only; no real PDFs, Crossref or cloud load",
+  "records": 500000,
+  "build_seconds": 63.83,
+  "sqlite_bytes": 1232138240,
+  "process_peak_rss_bytes": 57049088,
+  "lookup_ms": {
+    "doi": {
+      "median": 0.014,
+      "p95": 0.021
+    },
+    "hash": {
+      "median": 0.011,
+      "p95": 0.015
+    },
+    "title": {
+      "median": 1.119,
+      "p95": 1.511
+    }
+  }
+}

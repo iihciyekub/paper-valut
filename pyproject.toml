@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "papervault-cli"
+version = "0.1.0"
+description = "Verified DOI-first PDF archiving on Google Drive"
+requires-python = ">=3.12"
+dependencies = [
+  "google-auth>=2.40,<3",
+  "google-auth-oauthlib>=1.2,<2",
+  "requests>=2.32,<3",
+  "pypdf>=6,<7",
+  "keyring>=25,<26",
+  "filelock>=3.18,<4",
+  "send2trash>=1.8,<2",
+]
+
+[project.scripts]
+pv = "papervault.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "reportlab>=4,<5", "ruff>=0.12"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/papervault"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+
