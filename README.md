@@ -45,6 +45,7 @@ pv --version
 ```bash
 pv auth login --client /path/to/client_secret.json
 pv init --name PaperVault
+pv storage
 pv doctor
 ```
 
@@ -66,6 +67,8 @@ pv doctor
 ```
 
 父目录权限为 700。刷新令牌默认在系统钥匙串中，不在上述文件中。无系统钥匙串的环境可显式使用 `pv auth login --token-store file`；该选项把令牌保存在本机权限 600 的 `token.json`。配置、令牌、上传会话地址不得加入版本控制或公开日志。
+
+`index.sqlite3` **不会上传到 PaperVault 的 Google Drive 文献库，也不应把正在使用的 SQLite/WAL 当成同步文件在多台机器之间实时共享**。它是本机高速索引，并混合保存导入任务、缓存等设备状态；文献本身的可恢复权威数据是云端不可变 `records/*.json`。换机后使用 `pv connect ...` + `pv rebuild --from-drive` 重建文献索引。若旧机器仍有待复核、失败上传或 pending 操作，应先保留旧的 `~/.papervault`，处理完再迁移。`pv storage` 可离线查看当前 SQLite 路径、待处理本机状态，以及 PDF/CSL sidecar/records 的职责。
 
 Google 的 External + Testing 应用涉及 Drive 权限时，刷新令牌通常 7 天过期；失效后运行 `pv auth login`。长期使用应根据 Google 控制台要求调整发布配置。Production 也不代表授权永不过期。[Google 令牌说明](https://developers.google.com/identity/protocols/oauth2#expiration)
 
@@ -126,7 +129,7 @@ PaperVault/
 
 DOI 是文献外部标识；`work_id` 是内部文献 ID；SHA-256 标识具体字节；Drive fileId 是云端定位标识。文件名相同不等于 Drive 对象相同，程序使用 fileId。
 
-`objects` 按 SHA-256 前两位分片；每个 PDF 旁边保存同名 `<SHA-256>.csl.json`。旁车文件是标准 CSL-JSON，可脱离 PaperVault 被其他工具直接读取；`records` 中不可变 JSON 仍是权威档案历史。`records` 按 DOI 的 SHA-256 key 前两位分片。程序依靠 Drive fileId 与 `appProperties` 定位对象，而不是依赖文件名。这样不会把 50 万篇文献全部堆进单一 Drive 文件夹。
+`objects` 按 SHA-256 前两位分片；每个 PDF 旁边保存同名 `<SHA-256>.csl.json`。旁车文件是标准 CSL-JSON，可脱离 PaperVault 被其他工具直接读取；**不再额外生成一份完整 `<SHA-256>.metadata.json`**，因为完整 Crossref 原始响应、匹配证据、文件角色与版本关系已经由 `records` 中的不可变记录保存，再复制一份只会增加一致性维护成本。`records` 才是权威档案历史。`records` 按 DOI 的 SHA-256 key 前两位分片。程序依靠 Drive fileId 与 `appProperties` 定位对象，而不是依赖文件名。这样不会把 50 万篇文献全部堆进单一 Drive 文件夹。
 
 每个记录 JSON 保存全量 CSL、原始元数据、匹配依据、全部 PDF 关联及主文件选择。更新生成新记录，旧记录保留。不可直接手工修改 records 内容或覆盖 objects 文件；异常会阻止重建或后续清理。
 

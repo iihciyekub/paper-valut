@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
@@ -41,6 +42,7 @@ def parser():
     a.add_argument("--cache-limit-mb", type=int)
     a.add_argument("--max-pdf-mb", type=int)
     sub.add_parser("doctor", help="诊断授权、Crossref 和 Drive 状态")
+    sub.add_parser("storage", help="显示本地 SQLite、PDF sidecar 与云端 records 的存储关系")
     a = sub.add_parser("import", help="导入 PDF；默认保留本地原件")
     a.add_argument("path")
     a.add_argument("--recursive", action="store_true")
@@ -155,6 +157,71 @@ def result_code(jobs):
     return max(codes, default=0)
 
 
+def storage_status(state):
+    index_path = state.home / "index.sqlite3"
+    sqlite_info = {
+        "path": str(index_path),
+        "exists": index_path.exists(),
+        "bytes": index_path.stat().st_size if index_path.exists() else 0,
+        "uploaded_to_vault": False,
+        "role": "local rebuildable search/index projection plus device-local operational state",
+        "rebuild_command": "pv rebuild --from-drive",
+    }
+    if index_path.exists():
+        try:
+            db = sqlite3.connect(index_path.as_uri() + "?mode=ro", uri=True)
+            try:
+                sqlite_info["journal_mode"] = db.execute("PRAGMA journal_mode").fetchone()[0]
+                sqlite_info["rows"] = {
+                    table: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    for table in ("works", "commits", "jobs", "cache")
+                }
+            finally:
+                db.close()
+        except sqlite3.DatabaseError as e:
+            sqlite_info["read_error"] = type(e).__name__
+
+    def count_files(name):
+        folder = state.home / name
+        return sum(1 for x in folder.glob("*") if x.is_file()) if folder.exists() else 0
+
+    vault = state.config.get("vault")
+    return {
+        "local": {
+            "home": str(state.home),
+            "sqlite": sqlite_info,
+            "local_only": {
+                "jobs": "import/review history and source paths are device-local",
+                "staging_files": count_files("staging"),
+                "upload_sessions": count_files("uploads"),
+                "pending_records": count_files("pending-records"),
+                "pending_ops": count_files("pending-ops"),
+                "cache_dir": str(state.home / "cache"),
+            },
+        },
+        "cloud": {
+            "configured": bool(vault),
+            "sqlite_uploaded": False,
+            "objects": {
+                "pdf": "objects/<sha256[:2]>/<sha256>.pdf",
+                "sidecar": "objects/<sha256[:2]>/<sha256>.csl.json",
+                "sidecar_format": "CSL-JSON",
+                "sidecar_authoritative": False,
+            },
+            "records": {
+                "layout": "records/<doi-hash[:2]>/<work_id>.<commit_id>.json",
+                "authoritative_metadata": True,
+                "immutable_history": True,
+            },
+        },
+        "policy": {
+            "live_sync_sqlite_to_drive": False,
+            "reason": "SQLite/WAL is local mutable state; PaperVault rebuilds the literature index from immutable Drive records.",
+            "migration": "On a new device, connect to the same vault and run pv rebuild --from-drive. Preserve old local state first if jobs or pending operations still matter.",
+        },
+    }
+
+
 def dispatch(a, state):
     if a.cmd == "auth":
         if a.action == "login":
@@ -165,6 +232,8 @@ def dispatch(a, state):
             "authorized": bool(auth.load_token(state)),
             "token_store": state.config.get("token_store", "keyring"),
         }, 0
+    if a.cmd == "storage":
+        return storage_status(state), 0
     if a.cmd == "config":
         for name in ("mailto", "cache_limit_mb", "max_pdf_mb"):
             value = getattr(a, name)
@@ -185,6 +254,7 @@ def dispatch(a, state):
         out = {
             "home": str(state.home),
             "oauth_client_installed": (state.home / "client.json").exists(),
+            "storage": storage_status(state),
             "checks": [],
         }
         for name, check in [
